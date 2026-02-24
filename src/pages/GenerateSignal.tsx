@@ -20,8 +20,9 @@ export const GenerateSignal = () => {
     const fetchModels = async () => {
       try {
         const data: any = await api.models.getAll(token, provider);
-        setModels(data);
-        if (data.length > 0) setSelectedModel(data[0].id);
+        const modelsData = Array.isArray(data) ? data : [];
+        setModels(modelsData);
+        if (modelsData.length > 0) setSelectedModel(modelsData[0].id);
       } catch (error) {
         console.error('Failed to fetch models', error);
       }

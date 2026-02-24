@@ -1,4 +1,5 @@
 import { API_BASE_URL } from '../constants';
+import { TickerItemProps, NewsItemProps } from '../types';
 
 interface RequestOptions extends RequestInit {
   token?: string | null;
@@ -54,7 +55,7 @@ export const api = {
   user: {
     getApiKey: (token: string) => request('/api/user/apikey', { token }),
     setupApiKey: (token: string, body: any) => request('/api/user/apikey', { method: 'PUT', body: JSON.stringify(body), token }),
-    testApiKey: (token: string) => request('/api/user/apikey/test', { method: 'POST', token }),
+    testApiKey: (token: string, body: { provider: string }) => request('/api/user/apikey/test', { method: 'POST', body: JSON.stringify(body), token }),
     deleteApiKey: (token: string, provider: string) => request(`/api/user/apikey/${provider}`, { method: 'DELETE', token }),
     getUsage: (token: string) => request('/api/user/usage', { token }),
     updateProfile: (token: string, body: any) => request('/api/user/profile', { method: 'PUT', body: JSON.stringify(body), token }),
@@ -107,5 +108,9 @@ export const api = {
     deleteForumPost: (token: string, id: string) => request(`/api/admin/forum/posts/${id}`, { method: 'DELETE', token }),
     broadcast: (token: string, body: any) => request('/api/admin/notify/broadcast', { method: 'POST', body: JSON.stringify(body), token }),
     notifyUser: (token: string, id: string, body: any) => request(`/api/admin/notify/user/${id}`, { method: 'POST', body: JSON.stringify(body), token }),
+  },
+  public: {
+    getNewsTicker: () => request<TickerItemProps[]>('/api/public/news-ticker'),
+    getMarketBroadcast: () => request<{ mainNews: NewsItemProps; smallNews: NewsItemProps[] }>('/api/public/market-broadcast'),
   }
 };

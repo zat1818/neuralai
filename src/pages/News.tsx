@@ -1,11 +1,36 @@
-import { useState } from 'react';
-import { Card, Button, Input } from '../components/UI';
-import { Newspaper, Search, Filter, Calendar, Clock, ArrowRight } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Card, Button, Input, cn } from '../components/UI';
+import { Newspaper, Search, Filter, Calendar, Clock, ArrowRight, Zap } from 'lucide-react';
+import { api } from '../services/api';
 
 export const News = () => {
   const [activeCategory, setActiveCategory] = useState('Semua');
+  const [news, setNews] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const token = localStorage.getItem('neural_token');
+
+  useEffect(() => {
+    if (!token) return;
+    const fetchNews = async () => {
+      try {
+        const data: any = await api.forum.getNews(token);
+        setNews(Array.isArray(data) ? data : []);
+      } catch (error) {
+        console.error('Failed to fetch news', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchNews();
+  }, [token]);
 
   const categories = ['Semua', 'Forex', 'Crypto', 'Gold', 'Stocks'];
+  const filteredNews = activeCategory === 'Semua' 
+    ? news 
+    : news.filter(n => n.category?.toLowerCase() === activeCategory.toLowerCase());
+
+  const mainNews = news[0];
+  const otherNews = news.slice(1);
 
   return (
     <div className="space-y-8">
@@ -37,59 +62,65 @@ export const News = () => {
         ))}
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 space-y-8">
-          {/* Main News */}
-          <Card className="p-0 overflow-hidden group cursor-pointer">
-            <div className="aspect-video relative">
-              <img src="https://picsum.photos/seed/market1/1200/600" alt="News" className="w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-1000" referrerPolicy="no-referrer" />
-              <div className="absolute inset-0 bg-gradient-to-t from-neural-black via-neural-black/20 to-transparent"></div>
-              <div className="absolute bottom-0 left-0 p-8">
-                <div className="flex items-center gap-3 mb-4">
-                  <span className="bg-neural-red text-white text-[10px] px-2 py-1 font-mono uppercase">GOLD</span>
-                  <span className="text-neural-neon text-[10px] font-mono flex items-center gap-1">
-                    <Clock className="w-3 h-3" /> 2 HOURS AGO
-                  </span>
+      {loading ? (
+        <div className="py-20 text-center">
+          <div className="w-12 h-12 border-4 border-neural-red/20 border-t-neural-neon rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="font-mono text-neural-neon animate-pulse">ACCESSING GLOBAL NEWS FEED...</p>
+        </div>
+      ) : (
+        <div className="grid lg:grid-cols-3 gap-8">
+          <div className="lg:col-span-2 space-y-8">
+            {mainNews && (
+              <Card className="p-0 overflow-hidden group cursor-pointer">
+                <div className="aspect-video relative">
+                  <img src={mainNews.image || `https://picsum.photos/seed/${mainNews.title}/1200/600`} alt="News" className="w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-1000" referrerPolicy="no-referrer" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-neural-black via-neural-black/20 to-transparent"></div>
+                  <div className="absolute bottom-0 left-0 p-8">
+                    <div className="flex items-center gap-3 mb-4">
+                      <span className="bg-neural-red text-white text-[10px] px-2 py-1 font-mono uppercase">{mainNews.category}</span>
+                      <span className="text-neural-neon text-[10px] font-mono flex items-center gap-1">
+                        <Clock className="w-3 h-3" /> {mainNews.time}
+                      </span>
+                    </div>
+                    <h2 className="text-3xl font-orbitron text-white mb-4 group-hover:text-neural-neon transition-colors">{mainNews.title}</h2>
+                    <p className="text-neural-text/70 line-clamp-2 max-w-2xl mb-6">{mainNews.content}</p>
+                    <Button className="flex items-center gap-2">BACA SELENGKAPNYA <ArrowRight className="w-4 h-4" /></Button>
+                  </div>
                 </div>
-                <h2 className="text-3xl font-orbitron text-white mb-4 group-hover:text-neural-neon transition-colors">FED INTEREST RATE DECISION: NEURAL MODELS PREDICT HAWKISH STANCE</h2>
-                <p className="text-neural-text/70 line-clamp-2 max-w-2xl mb-6">Analisis sentimen dari 47 provider berita menunjukkan probabilitas 82% bahwa Fed akan mempertahankan suku bunga. NeuralAI memprediksi volatilitas tinggi pada DXY.</p>
-                <Button className="flex items-center gap-2">BACA SELENGKAPNYA <ArrowRight className="w-4 h-4" /></Button>
-              </div>
-            </div>
-          </Card>
+              </Card>
+            )}
 
-          <div className="grid md:grid-cols-2 gap-6">
-            <NewsCard category="CRYPTO" title="Ethereum ETF Approval Odds Shift" time="4h ago" />
-            <NewsCard category="FOREX" title="Yen Intervention: BOJ Statement Analysis" time="6h ago" />
-            <NewsCard category="STOCKS" title="Tech Sector Liquidity Grab Detected" time="8h ago" />
-            <NewsCard category="GOLD" title="Central Bank Gold Reserves Increase" time="12h ago" />
+            <div className="grid md:grid-cols-2 gap-6">
+              {otherNews.map((n, i) => (
+                <NewsCard key={i} category={n.category} title={n.title} time={n.time} />
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-8">
+            <Card className="bg-neural-red/5 border-neural-red/30">
+              <h3 className="font-orbitron text-sm text-neural-neon mb-4 flex items-center gap-2">
+                <Zap className="w-4 h-4" /> AI INSIGHTS
+              </h3>
+              <div className="space-y-4">
+                <InsightItem text="XAUUSD: Bullish sentiment increasing among institutional models." />
+                <InsightItem text="BTCUSD: High probability of liquidity sweep at $52,000." />
+                <InsightItem text="EURUSD: Bearish divergence confirmed on H4 timeframe." />
+              </div>
+            </Card>
+
+            <section>
+              <h3 className="font-orbitron text-sm text-white mb-4 uppercase tracking-widest">Trending Topics</h3>
+              <div className="space-y-2">
+                <TrendingTag label="#FedPivot" count="1.2k" />
+                <TrendingTag label="#BitcoinHalving" count="850" />
+                <TrendingTag label="#GoldBreakout" count="640" />
+                <TrendingTag label="#AITrading" count="520" />
+              </div>
+            </section>
           </div>
         </div>
-
-        {/* Sidebar */}
-        <div className="space-y-8">
-          <Card className="bg-neural-red/5 border-neural-red/30">
-            <h3 className="font-orbitron text-sm text-neural-neon mb-4 flex items-center gap-2">
-              <Zap className="w-4 h-4" /> AI INSIGHTS
-            </h3>
-            <div className="space-y-4">
-              <InsightItem text="XAUUSD: Bullish sentiment increasing among institutional models." />
-              <InsightItem text="BTCUSD: High probability of liquidity sweep at $52,000." />
-              <InsightItem text="EURUSD: Bearish divergence confirmed on H4 timeframe." />
-            </div>
-          </Card>
-
-          <section>
-            <h3 className="font-orbitron text-sm text-white mb-4 uppercase tracking-widest">Trending Topics</h3>
-            <div className="space-y-2">
-              <TrendingTag label="#FedPivot" count="1.2k" />
-              <TrendingTag label="#BitcoinHalving" count="850" />
-              <TrendingTag label="#GoldBreakout" count="640" />
-              <TrendingTag label="#AITrading" count="520" />
-            </div>
-          </section>
-        </div>
-      </div>
+      )}
     </div>
   );
 };
@@ -121,6 +152,3 @@ const TrendingTag = ({ label, count }: any) => (
     <span className="text-[10px] font-mono text-neural-neon">{count}</span>
   </div>
 );
-
-import { cn } from '../components/UI';
-import { Zap } from 'lucide-react';

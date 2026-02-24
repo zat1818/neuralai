@@ -1,15 +1,20 @@
 import React, { useEffect, useState } from 'react';
 import { Card, cn } from '../components/UI';
 import { Activity, Zap, Target, Cpu, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { AdvancedRealTimeChart } from 'react-ts-tradingview-widgets';
 import { api } from '../services/api';
+import { useSocket } from '../hooks/useSocket';
+import { safeJsonParse } from '../utils/storage';
 
 export const DashboardHome = () => {
-  const user = JSON.parse(localStorage.getItem('neural_user') || '{}');
+  const user = safeJsonParse(localStorage.getItem('neural_user'), {});
   const token = localStorage.getItem('neural_token');
   const [stats, setStats] = useState<any>(null);
   const [signals, setSignals] = useState<any[]>([]);
   const [apiKeys, setApiKeys] = useState<any[]>([]);
   const [notifications, setNotifications] = useState<any[]>([]);
+  const [chartSymbol, setChartSymbol] = useState('FX_IDC:EURUSD'); // Default chart symbol
+  const { socket } = useSocket();
 
   useEffect(() => {
     if (!token) return;
@@ -21,15 +26,20 @@ export const DashboardHome = () => {
           api.user.getApiKey(token) as Promise<any>,
           api.notifications.getAll(token) as Promise<any>,
         ]);
-        setSignals(history);
-        setApiKeys(keys);
-        setNotifications(notifs.slice(0, 3));
+        
+        const signalsData = Array.isArray(history) ? history : [];
+        const keysData = Array.isArray(keys) ? keys : [];
+        const notifsData = Array.isArray(notifs) ? notifs : [];
+
+        setSignals(signalsData);
+        setApiKeys(keysData);
+        setNotifications(notifsData.slice(0, 3));
         
         setStats({
           totalSignals: 1284,
           todaySignals: 24,
           winRate: '78.4%',
-          activeProviders: keys.filter((k: any) => k.status === 'active').length
+          activeProviders: keysData.filter((k: any) => k.status === 'active').length
         });
       } catch (error) {
         console.error('Failed to fetch dashboard data', error);
@@ -38,6 +48,45 @@ export const DashboardHome = () => {
 
     fetchData();
   }, [token]);
+
+  useEffect(() => {
+    if (!socket) return;
+
+    socket.on('signal:new', (newSignal) => {
+      setSignals((prev) => [newSignal, ...prev].slice(0, 5));
+      setStats((prev: any) => prev ? {
+        ...prev,
+        totalSignals: prev.totalSignals + 1,
+        todaySignals: prev.todaySignals + 1
+      } : null);
+    });
+
+    socket.on('notification:new', (newNotif) => {
+      setNotifications((prev) => [newNotif, ...prev].slice(0, 3));
+    });
+
+    socket.on('apikey:update', (updatedKey) => {
+      setApiKeys((prev) => {
+        const existingIndex = prev.findIndex((k) => k.provider === updatedKey.provider);
+        if (existingIndex > -1) {
+          return prev.map((k, i) => (i === existingIndex ? updatedKey : k));
+        } else {
+          return [...prev, updatedKey];
+        }
+      });
+    });
+
+    socket.on('apikey:delete', ({ provider }) => {
+      setApiKeys((prev) => prev.filter((k) => k.provider !== provider));
+    });
+
+    return () => {
+      socket.off('signal:new');
+      socket.off('notification:new');
+      socket.off('apikey:update');
+      socket.off('apikey:delete');
+    };
+  }, [socket]);
 
   return (
     <div className="space-y-8">
@@ -63,6 +112,26 @@ export const DashboardHome = () => {
       </div>
 
       <div className="grid lg:grid-cols-3 gap-8">
+        {/* Real-time TradingView Chart */}
+        <div className="lg:col-span-2">
+          <Card className="p-0 overflow-hidden h-[500px]">
+            <AdvancedRealTimeChart 
+              theme="dark"
+              autosize
+              symbol={chartSymbol}
+              interval="15"
+              timezone="Asia/Jakarta"
+              locale="en"
+              toolbar_bg="#151619"
+              enable_publishing={false}
+              hide_side_toolbar={false}
+              allow_symbol_change={true}
+              save_image={false}
+              studies={["RSI@tv-basicstudies", "StochasticRSI@tv-basicstudies", "MACD@tv-basicstudies"]}
+            />
+          </Card>
+        </div>
+
         {/* Recent Signals */}
         <div className="lg:col-span-2 space-y-6">
           <div className="flex items-center justify-between">
@@ -119,7 +188,7 @@ export const DashboardHome = () => {
           <section>
             <h2 className="text-lg mb-4">NOTIFIKASI TERBARU</h2>
             <div className="space-y-4">
-              {notifications.map((notif: any) => (
+              {Array.isArray(notifications) && notifications.map((notif: any) => (
                 <NotificationItem key={notif.id} type={notif.type} text={notif.text} time={notif.createdAt} />
               ))}
               {notifications.length === 0 && (

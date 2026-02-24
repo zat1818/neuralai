@@ -7,7 +7,6 @@ import { ExternalLink, Cpu, ShieldCheck, Zap } from 'lucide-react';
 export const Providers = () => {
   return (
     <div className="min-h-screen bg-neural-black">
-      <Navbar />
       <div className="max-w-7xl mx-auto px-4 py-24">
         <div className="text-center mb-20">
           <h1 className="text-4xl md:text-6xl mb-6">NEURAL CORES</h1>

@@ -3,10 +3,12 @@ import { Card, Button, cn } from '../components/UI';
 import { Bell, MessageSquare, Zap, ShieldAlert, Info, Check, Trash2 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { api } from '../services/api';
+import { useSocket } from '../hooks/useSocket';
 
 export const Notifications = () => {
   const [activeTab, setActiveTab] = useState('Semua');
   const [notifications, setNotifications] = useState<any[]>([]);
+  const { socket } = useSocket();
   const token = localStorage.getItem('neural_token');
   const tabs = ['Semua', 'Tag & Mention', 'Signal', 'System', 'Admin'];
 
@@ -22,6 +24,18 @@ export const Notifications = () => {
     };
     fetchNotifs();
   }, [token]);
+
+  useEffect(() => {
+    if (!socket) return;
+
+    socket.on('notification:new', (newNotif) => {
+      setNotifications((prev) => [newNotif, ...prev]);
+    });
+
+    return () => {
+      socket.off('notification:new');
+    };
+  }, [socket]);
 
   const handleMarkRead = async (id: string) => {
     if (!token) return;
@@ -100,7 +114,7 @@ export const Notifications = () => {
       </div>
 
       <div className="space-y-4">
-        {notifications.map((notif) => (
+        {Array.isArray(notifications) && notifications.map((notif) => (
           <div key={notif.id} onClick={() => handleMarkRead(notif.id)}>
             <Card 
               className={cn(

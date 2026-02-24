@@ -35,7 +35,7 @@ export const APIKeys = () => {
   const handleTest = async (provider: string) => {
     if (!token) return;
     try {
-      const res: any = await api.user.testApiKey(token);
+      const res: any = await api.user.testApiKey(token, { provider });
       alert(`${provider} key is ${res.valid ? 'VALID' : 'INVALID'}`);
     } catch (error: any) {
       alert(error.message || 'Test failed');
@@ -57,7 +57,7 @@ export const APIKeys = () => {
 
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
         {AI_PROVIDERS.map((provider) => {
-          const keyInfo = keys.find((k: any) => k.provider === provider.id);
+          const keyInfo = Array.isArray(keys) ? keys.find((k: any) => k.provider === provider.id) : undefined;
           return (
             <Card key={provider.id} className="relative group">
               <div className="flex justify-between items-start mb-6">

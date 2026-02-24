@@ -1,5 +1,5 @@
-export const API_BASE_URL = "https://api-zat.zone.id";
-export const SOCKET_URL = "https://api-zat.zone.id";
+export const API_BASE_URL = window.location.origin;
+export const SOCKET_URL = window.location.origin;
 
 export const AI_PROVIDERS = [
   { id: 'gemini', name: 'Gemini', description: 'Google DeepMind powerful multimodal AI.', link: 'https://aistudio.google.com/app/apikey' },

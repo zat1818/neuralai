@@ -20,7 +20,7 @@ export const AdminPanel = () => {
           api.admin.getUsers(token) as Promise<any>
         ]);
         setStats(adminStats);
-        setUsers(allUsers);
+        setUsers(Array.isArray(allUsers) ? allUsers : []);
       } catch (error) {
         console.error('Failed to fetch admin data', error);
       }

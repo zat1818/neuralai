@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Hexagon, User, Mail, Lock, Terminal, CheckCircle } from 'lucide-react';
 import { Button, Input, Card } from '../components/UI';
 import { api } from '../services/api';
+import { useNotifications } from '../hooks/useNotifications';
 
 export const RegisterPage = () => {
   const [step, setStep] = useState<'form' | 'otp'>('form');
@@ -11,6 +12,7 @@ export const RegisterPage = () => {
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const { addToast } = useNotifications();
 
   const handleOtpChange = (index: number, value: string) => {
     if (value.length > 1) return;

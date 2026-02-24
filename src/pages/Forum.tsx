@@ -5,6 +5,7 @@ import { api } from '../services/api';
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
 import { motion, AnimatePresence } from 'motion/react';
+import { useSocket } from '../hooks/useSocket';
 
 export const Forum = () => {
   const [posts, setPosts] = useState<any[]>([]);
@@ -12,6 +13,7 @@ export const Forum = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newPost, setNewPost] = useState({ title: '', content: '', category: 'Umum' });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { socket } = useSocket();
   const token = localStorage.getItem('neural_token');
 
   useEffect(() => {
@@ -22,14 +24,36 @@ export const Forum = () => {
           api.forum.getPosts(token) as Promise<any>,
           api.forum.getLeaderboard(token) as Promise<any>
         ]);
-        setPosts(postsData);
-        setLeaderboard(leaderboardData);
+        setPosts(Array.isArray(postsData) ? postsData : []);
+        setLeaderboard(Array.isArray(leaderboardData) ? leaderboardData : []);
       } catch (error) {
         console.error('Failed to fetch forum data', error);
       }
     };
     fetchData();
   }, [token]);
+
+  useEffect(() => {
+    if (!socket) return;
+
+    socket.on('forum:post:new', (newPost) => {
+      setPosts((prev) => [newPost, ...prev]);
+    });
+
+    socket.on('forum:post:like', ({ postId, likes }) => {
+      setPosts((prev) => prev.map(p => p.id === postId ? { ...p, likes } : p));
+    });
+
+    socket.on('forum:post:comment', ({ postId, commentsCount }) => {
+      setPosts((prev) => prev.map(p => p.id === postId ? { ...p, commentsCount } : p));
+    });
+
+    return () => {
+      socket.off('forum:post:new');
+      socket.off('forum:post:like');
+      socket.off('forum:post:comment');
+    };
+  }, [socket]);
 
   const handleLike = async (postId: string) => {
     if (!token) return;

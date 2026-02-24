@@ -4,11 +4,12 @@ import { User, Palette, Shield, Terminal, Check, RotateCcw } from 'lucide-react'
 import { useTheme } from '../hooks/useTheme';
 import { api } from '../services/api';
 import { motion } from 'motion/react';
+import { safeJsonParse } from '../utils/storage';
 
 export const Settings = () => {
   const [activeTab, setActiveTab] = useState('PROFIL');
   const { theme, setTheme, resetTheme } = useTheme();
-  const [user, setUser] = useState<any>(JSON.parse(localStorage.getItem('neural_user') || '{}'));
+  const [user, setUser] = useState<any>(safeJsonParse(localStorage.getItem('neural_user'), {}));
   const token = localStorage.getItem('neural_token');
   const [usage, setUsage] = useState<any>(null);
   const [profileForm, setProfileForm] = useState({

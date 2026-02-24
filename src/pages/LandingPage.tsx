@@ -1,23 +1,54 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { Button, Card, cn } from '../components/UI';
 import { AI_PROVIDERS } from '../constants';
 import { Shield, Zap, Eye, ChevronRight, Activity, Globe, Cpu, Users, Hexagon } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { api } from '../services/api';
+import { TickerItemProps, NewsItemProps } from '../types';
 
 export const LandingPage = () => {
+  const [tickerNews, setTickerNews] = useState<TickerItemProps[]>([]);
+  const [marketBroadcast, setMarketBroadcast] = useState<NewsItemProps | null>(null);
+  const [smallNews, setSmallNews] = useState<NewsItemProps[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchPublicData = async () => {
+      setLoading(true);
+      try {
+        const tickerResponse = await api.public.getNewsTicker();
+        setTickerNews(tickerResponse);
+
+        const marketBroadcastResponse = await api.public.getMarketBroadcast();
+        setMarketBroadcast(marketBroadcastResponse.mainNews);
+        setSmallNews(marketBroadcastResponse.smallNews);
+      } catch (error) {
+        console.error('Failed to fetch public data:', error);
+        // Fallback to static data or show error message
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchPublicData();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-neural-black">
+        <div className="text-neural-neon text-xl font-mono animate-pulse">LOADING NEURAL INTEL...</div>
+      </div>
+    );
+  }
+
   return (
     <div className="relative">
       {/* Live News Ticker */}
       <div className="bg-neural-red/10 border-b border-neural-red/20 py-2 overflow-hidden whitespace-nowrap relative z-20">
         <div className="flex items-center gap-8 animate-marquee">
-          <TickerItem category="GOLD" text="XAUUSD mitigates H1 Order Block at $2025. Neural Core predicts 87% bullish continuation." />
-          <TickerItem category="CRYPTO" text="BTC Liquidity sweep at $52,000 confirmed. AI sentiment shifts to neutral-bullish." />
-          <TickerItem category="FOREX" text="EURUSD Bearish divergence on H4. Target liquidity at 1.0750." />
-          <TickerItem category="STOCKS" text="NVDA: Neural analysis shows institutional accumulation before earnings report." />
-          {/* Duplicate for seamless loop */}
-          <TickerItem category="GOLD" text="XAUUSD mitigates H1 Order Block at $2025. Neural Core predicts 87% bullish continuation." />
-          <TickerItem category="CRYPTO" text="BTC Liquidity sweep at $52,000 confirmed. AI sentiment shifts to neutral-bullish." />
+          {Array.isArray(tickerNews) && tickerNews.map((item, index) => (
+            <TickerItem key={index} category={item.category} text={item.text} />
+          ))}
         </div>
       </div>
 
@@ -133,13 +164,8 @@ export const LandingPage = () => {
                   </span>
                 </div>
                 <div className="flex items-center gap-3 mb-4">
-                  <div className="w-10 h-10 bg-neural-red/10 border border-neural-red/20 flex items-center justify-center overflow-hidden">
-                    <img 
-                      src={`https://picsum.photos/seed/${provider.id}/40/40`} 
-                      alt={provider.name} 
-                      className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity"
-                      referrerPolicy="no-referrer"
-                    />
+                  <div className="w-10 h-10 bg-neural-red/10 border border-neural-red/20 flex items-center justify-center overflow-hidden text-neural-neon">
+                    <Hexagon className="w-6 h-6" />
                   </div>
                   <h3 className="text-xl text-white group-hover:text-neural-neon transition-colors">{provider.name}</h3>
                 </div>
@@ -185,21 +211,20 @@ export const LandingPage = () => {
             <div className="lg:col-span-2">
               <Card className="h-full p-0 overflow-hidden group">
                 <div className="aspect-video relative">
-                  <img src="https://picsum.photos/seed/trading1/800/450" alt="Market" className="w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-700" referrerPolicy="no-referrer" />
+                  <img src={marketBroadcast?.imageUrl} alt="Market" className="w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-700" referrerPolicy="no-referrer" />
                   <div className="absolute inset-0 bg-gradient-to-t from-neural-black to-transparent"></div>
                   <div className="absolute bottom-0 left-0 p-8">
-                    <span className="bg-neural-red text-white text-[10px] px-2 py-1 font-mono mb-4 inline-block">GOLD | AI ANALYZED</span>
-                    <h3 className="text-2xl md:text-3xl mb-2">XAUUSD BREAKOUT: NEURAL MODELS PREDICT BULLISH MOMENTUM</h3>
-                    <p className="text-neural-text/70 line-clamp-2">Analisis SMC menunjukkan akumulasi besar di zona $2020. AI memprediksi target $2050 dalam 24 jam ke depan.</p>
+                    <span className="bg-neural-red text-white text-[10px] px-2 py-1 font-mono mb-4 inline-block">{marketBroadcast?.category} | AI ANALYZED</span>
+                    <h3 className="text-2xl md:text-3xl mb-2">{marketBroadcast?.title}</h3>
+                    <p className="text-neural-text/70 line-clamp-2">{marketBroadcast?.description}</p>
                   </div>
                 </div>
               </Card>
             </div>
             <div className="space-y-4">
-              <NewsSmallItem category="CRYPTO" title="BTC Halving Sentiment Analysis" time="2h ago" />
-              <NewsSmallItem category="FOREX" title="EURUSD Liquidity Grab Detected" time="4h ago" />
-              <NewsSmallItem category="STOCKS" title="NVDA Earnings: AI Impact Report" time="6h ago" />
-              <NewsSmallItem category="GOLD" title="DXY Correlation Shift Alert" time="8h ago" />
+              {smallNews.map((item, index) => (
+                <NewsSmallItem key={index} category={item.category} title={item.title} time={item.time} />
+              ))}
             </div>
           </div>
         </div>

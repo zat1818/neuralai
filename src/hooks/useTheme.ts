@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { safeJsonParse } from '../utils/storage';
 
 export type ThemePreset = 'UMBRELLA' | 'MATRIX' | 'ARCTIC' | 'GHOST' | 'SOVEREIGN' | 'TOXIC' | 'CUSTOM';
 
@@ -26,8 +27,7 @@ const DEFAULT_THEME: ThemeConfig = {
 
 export function useTheme() {
   const [theme, setTheme] = useState<ThemeConfig>(() => {
-    const saved = localStorage.getItem('neural_theme');
-    return saved ? JSON.parse(saved) : DEFAULT_THEME;
+    return safeJsonParse(localStorage.getItem('neural_theme'), DEFAULT_THEME);
   });
 
   useEffect(() => {

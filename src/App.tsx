@@ -14,37 +14,23 @@ import { News } from './pages/News';
 import { Notifications } from './pages/Notifications';
 import { Settings } from './pages/Settings';
 import { AdminPanel } from './pages/AdminPanel';
+import { AdminBootstrap } from './pages/AdminBootstrap';
 import { LoadingScreen } from './components/LoadingScreen';
 import { Navbar } from './components/Navbar';
 import { useTheme } from './hooks/useTheme';
 import { useNotifications, ToastContainer } from './hooks/useNotifications';
+import { SocketProvider, useSocket } from './hooks/useSocket';
+import { safeJsonParse } from './utils/storage';
 
 import { HowItWorks } from './pages/HowItWorks';
 import { Providers } from './pages/Providers';
 
-const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-  const token = localStorage.getItem('neural_token');
-  if (!token) return <Navigate to="/login" replace />;
-  return <>{children}</>;
-};
-
-const AdminRoute = ({ children }: { children: React.ReactNode }) => {
-  const user = JSON.parse(localStorage.getItem('neural_user') || '{}');
-  if (user.role !== 'admin') return <Navigate to="/dashboard" replace />;
-  return <>{children}</>;
-};
-
-export default function App() {
-  useTheme(); // Initialize theme
-  const { toasts, removeToast, addToast } = useNotifications();
+const SocketHandler = () => {
+  const { socket } = useSocket();
+  const { addToast } = useNotifications();
 
   useEffect(() => {
-    const token = localStorage.getItem('neural_token');
-    if (!token) return;
-
-    const socket = io(SOCKET_URL, {
-      auth: { token }
-    });
+    if (!socket) return;
 
     socket.on('notification:new', (data) => {
       addToast(data.type || 'system', data.text);
@@ -59,26 +45,50 @@ export default function App() {
     });
 
     return () => {
-      socket.disconnect();
+      socket.off('notification:new');
+      socket.off('notification:broadcast');
+      socket.off('signal:new');
     };
-  }, [addToast]);
+  }, [socket, addToast]);
+
+  return null;
+};
+
+const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
+  const token = localStorage.getItem('neural_token');
+  if (!token) return <Navigate to="/login" replace />;
+  return <>{children}</>;
+};
+
+const AdminRoute = ({ children }: { children: React.ReactNode }) => {
+  const user = safeJsonParse(localStorage.getItem('neural_user'), {});
+  if (user.role !== 'admin') return <Navigate to="/dashboard" replace />;
+  return <>{children}</>;
+};
+
+export default function App() {
+  useTheme(); // Initialize theme
+  const { toasts, removeToast } = useNotifications();
 
   return (
-    <Router>
-      <div className="min-h-screen relative">
-        <div className="scanline"></div>
-        <LoadingScreen />
-        <ToastContainer toasts={toasts} removeToast={removeToast} />
-        
-        <Routes>
-          {/* Public Routes */}
-          <Route path="/" element={<><Navbar /><LandingPage /></>} />
-          <Route path="/how-it-works" element={<HowItWorks />} />
-          <Route path="/providers" element={<Providers />} />
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/register" element={<RegisterPage />} />
+    <SocketProvider>
+      <Router>
+        <div className="min-h-screen relative">
+          <div className="scanline"></div>
+          <LoadingScreen />
+          <SocketHandler />
+          <ToastContainer toasts={toasts} removeToast={removeToast} />
+          
+          <Routes>
+            {/* Public Routes */}
+            <Route path="/" element={<><Navbar /><LandingPage /></>} />
+            <Route path="/how-it-works" element={<><Navbar /><HowItWorks /></>} />
+            <Route path="/providers" element={<><Navbar /><Providers /></>} />
+            <Route path="/login" element={<><Navbar /><LoginPage /></>} />
+            <Route path="/register" element={<><Navbar /><RegisterPage /></>} />
+            <Route path="/admin/bootstrap" element={<AdminBootstrap />} />
 
-          {/* Dashboard Routes */}
+            {/* Dashboard Routes */}
           <Route path="/dashboard" element={
             <ProtectedRoute>
               <DashboardLayout><DashboardHome /></DashboardLayout>
@@ -127,5 +137,6 @@ export default function App() {
         </Routes>
       </div>
     </Router>
-  );
+  </SocketProvider>
+);
 }
