@@ -1,0 +1,181 @@
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=Rajdhani:wght@300;400;500;600;700&family=Share+Tech+Mono&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-orbitron: "Orbitron", sans-serif;
+  --font-rajdhani: "Rajdhani", sans-serif;
+  --font-mono: "Share Tech Mono", monospace;
+
+  --color-neural-black: #050505;
+  --color-neural-red: #8b0000;
+  --color-neural-neon: #ff0000;
+  --color-neural-gray: #1a1a1a;
+  --color-neural-text: #cccccc;
+}
+
+@layer base {
+  body {
+    @apply bg-neural-black text-neural-text font-rajdhani cursor-crosshair overflow-x-hidden;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-orbitron uppercase tracking-widest;
+  }
+}
+
+@layer components {
+  .scanline {
+    @apply fixed inset-0 pointer-events-none z-50;
+    background: linear-gradient(
+      rgba(18, 16, 16, 0) 50%,
+      rgba(0, 0, 0, 0.25) 50%
+    ),
+    linear-gradient(
+      90deg,
+      rgba(255, 0, 0, 0.06),
+      rgba(0, 255, 0, 0.02),
+      rgba(0, 0, 255, 0.06)
+    );
+    background-size: 100% 4px, 3px 100%;
+    opacity: 0.15;
+  }
+
+  .glitch {
+    position: relative;
+  }
+
+  .glitch::before,
+  .glitch::after {
+    content: attr(data-text);
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  .glitch::before {
+    left: 2px;
+    text-shadow: -2px 0 #ff0000;
+    clip: rect(44px, 450px, 56px, 0);
+    animation: glitch-anim 5s infinite linear alternate-reverse;
+  }
+
+  .glitch::after {
+    left: -2px;
+    text-shadow: -2px 0 #00fff9, 2px 2px #ff00c1;
+    animation: glitch-anim2 1s infinite linear alternate-reverse;
+  }
+
+  @keyframes glitch-anim {
+    0% { clip: rect(31px, 9999px, 94px, 0); }
+    20% { clip: rect(62px, 9999px, 42px, 0); }
+    40% { clip: rect(16px, 9999px, 78px, 0); }
+    60% { clip: rect(87px, 9999px, 12px, 0); }
+    80% { clip: rect(53px, 9999px, 65px, 0); }
+    100% { clip: rect(9px, 9999px, 34px, 0); }
+  }
+
+  @keyframes glitch-anim2 {
+    0% { clip: rect(65px, 9999px, 100px, 0); }
+    20% { clip: rect(23px, 9999px, 45px, 0); }
+    40% { clip: rect(89px, 9999px, 12px, 0); }
+    60% { clip: rect(45px, 9999px, 78px, 0); }
+    80% { clip: rect(12px, 9999px, 56px, 0); }
+    100% { clip: rect(78px, 9999px, 23px, 0); }
+  }
+
+  .neural-btn {
+    @apply px-6 py-2 bg-neural-red text-white font-orbitron uppercase tracking-widest text-sm transition-all duration-300 relative overflow-hidden border border-neural-neon/30 hover:bg-neural-neon hover:shadow-[0_0_20px_rgba(255,0,0,0.5)] active:scale-95;
+  }
+
+  .neural-card {
+    @apply bg-neural-gray/80 border border-neural-red/20 p-6 transition-all duration-300 hover:border-neural-neon/50 hover:scale-[1.02] hover:shadow-[0_0_15px_rgba(255,0,0,0.2)];
+  }
+
+  .terminal-text {
+    @apply font-mono text-neural-neon;
+  }
+
+  .animate-marquee {
+    animation: marquee 30s linear infinite;
+    display: flex;
+    width: max-content;
+  }
+
+  @keyframes marquee {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+  }
+}
+
+.hexagon-grid {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='49' viewBox='0 0 28 49'%3E%3Cpath fill='%23ff0000' fill-opacity='0.05' d='M13.99 9.25l13 7.5v15l-13 7.5L1 31.75v-15l12.99-7.5zM3 17.9l10.99-6.35L25 17.9v12.7L13.99 36.95 3 30.6V17.9z'/%3E%3C/svg%3E");
+}
+
+/* Quill Dark Theme Overrides */
+.quill-dark .ql-toolbar.ql-snow {
+  @apply bg-neural-gray border-neural-red/30;
+}
+
+.quill-dark .ql-container.ql-snow {
+  @apply bg-neural-black/50 border-neural-red/30 text-neural-text font-rajdhani min-h-[200px];
+}
+
+.quill-dark .ql-snow .ql-stroke {
+  stroke: #cccccc;
+}
+
+.quill-dark .ql-snow .ql-fill {
+  fill: #cccccc;
+}
+
+.quill-dark .ql-snow .ql-picker {
+  color: #cccccc;
+}
+
+.quill-dark .ql-snow.ql-toolbar button:hover,
+.quill-dark .ql-snow.ql-toolbar button:focus,
+.quill-dark .ql-snow.ql-toolbar button.ql-active {
+  @apply text-neural-neon;
+}
+
+.quill-dark .ql-snow.ql-toolbar button:hover .ql-stroke,
+.quill-dark .ql-snow.ql-toolbar button:focus .ql-stroke,
+.quill-dark .ql-snow.ql-toolbar button.ql-active .ql-stroke {
+  stroke: #ff0000;
+}
+
+.quill-dark .ql-editor.ql-blank::before {
+  @apply text-neural-text/30 font-mono italic;
+}
+
+/* Post Content Styles */
+.prose-invert {
+  @apply text-neural-text/80;
+}
+
+.prose-invert p {
+  @apply mb-4;
+}
+
+.prose-invert ul, .prose-invert ol {
+  @apply mb-4 ml-6;
+}
+
+.prose-invert ul {
+  @apply list-disc;
+}
+
+.prose-invert ol {
+  @apply list-decimal;
+}
+
+.prose-invert strong {
+  @apply text-white font-bold;
+}
+
+.prose-invert em {
+  @apply italic;
+}
+
