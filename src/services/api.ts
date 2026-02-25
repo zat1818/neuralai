@@ -38,6 +38,10 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
       localStorage.removeItem('neural_user');
       window.location.href = '/login';
     }
+    if (response.status === 403 && data.banned) {
+      localStorage.setItem('neural_ban_reason', data.reason || 'Pelanggaran kebijakan');
+      window.location.href = '/blocked';
+    }
     throw new Error(data.message || 'Something went wrong');
   }
 
@@ -102,12 +106,21 @@ export const api = {
     updateUserRole: (token: string, id: string, body: any) => request(`/api/admin/users/${id}/role`, { method: 'PATCH', body: JSON.stringify(body), token }),
     verifyUser: (token: string, id: string) => request(`/api/admin/users/${id}/verify`, { method: 'PATCH', token }),
     deleteUser: (token: string, id: string) => request(`/api/admin/users/${id}`, { method: 'DELETE', token }),
+    banUser: (token: string, id: string, body: { reason: string }) => request(`/api/admin/users/${id}/ban`, { method: 'POST', body: JSON.stringify(body), token }),
+    unbanUser: (token: string, id: string) => request(`/api/admin/users/${id}/unban`, { method: 'POST', token }),
     getSignals: (token: string) => request('/api/admin/signals', { token }),
     getForumPosts: (token: string) => request('/api/admin/forum/posts', { token }),
     updateForumPost: (token: string, id: string, body: any) => request(`/api/admin/forum/posts/${id}`, { method: 'PATCH', body: JSON.stringify(body), token }),
     deleteForumPost: (token: string, id: string) => request(`/api/admin/forum/posts/${id}`, { method: 'DELETE', token }),
     broadcast: (token: string, body: any) => request('/api/admin/notify/broadcast', { method: 'POST', body: JSON.stringify(body), token }),
     notifyUser: (token: string, id: string, body: any) => request(`/api/admin/notify/user/${id}`, { method: 'POST', body: JSON.stringify(body), token }),
+    getBugReports: (token: string) => request('/api/admin/bug-reports', { token }),
+    updateBugReport: (token: string, id: string, body: any) => request(`/api/admin/bug-reports/${id}`, { method: 'PATCH', body: JSON.stringify(body), token }),
+    deleteBugReport: (token: string, id: string) => request(`/api/admin/bug-reports/${id}`, { method: 'DELETE', token }),
+    backupDB: (token: string, body: { targetUri: string }) => request('/api/admin/backup', { method: 'POST', body: JSON.stringify(body), token }),
+  },
+  bugReports: {
+    submit: (token: string, body: any) => request('/api/bug-reports', { method: 'POST', body: JSON.stringify(body), token }),
   },
   public: {
     getNewsTicker: () => request<TickerItemProps[]>('/api/public/news-ticker'),

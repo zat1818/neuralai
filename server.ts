@@ -10,6 +10,10 @@ import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import dotenv from "dotenv";
 import { sendEmail } from './src/utils/email';
+import { GoogleGenAI } from "@google/genai";
+import Anthropic from "@anthropic-ai/sdk";
+import Groq from "groq-sdk";
+import OpenAI from "openai";
 
 dotenv.config();
 
@@ -19,21 +23,182 @@ const __dirname = path.dirname(__filename);
 const JWT_SECRET = process.env.JWT_SECRET || "neural_secret_fallback";
 const ADMIN_SECRET = process.env.ADMIN_SECRET || "neural_admin_secret_2025";
 
-// Database Connections
-const pool1 = new Pool({
-  connectionString: process.env.DATABASE_URL_1,
-  ssl: { rejectUnauthorized: false }
+// Single Database Connection
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_SSL === 'false' ? false : { rejectUnauthorized: false }
 });
 
-const pool2 = new Pool({
-  connectionString: process.env.DATABASE_URL_2,
-  ssl: { rejectUnauthorized: false }
-});
+// Alias untuk backward compatibility (akan dihapus bertahap)
+const pool1 = pool;
+const pool2 = pool;
+
+// AI Signal Generator
+const SIGNAL_PROMPT = (pair: string, mode: string, rr: number, tpCount: number) => {
+  const tpFields = Array.from({ length: tpCount }, (_, i) => 
+    `  "tp${i + 1}": "take profit ${i + 1} price"`
+  ).join(',\n');
+
+  const tpExample = Array.from({ length: tpCount }, (_, i) => {
+    const base = 1.08450;
+    const step = 0.00250 * (i + 1);
+    return `  "tp${i + 1}": "${(base + step).toFixed(5)}"`;
+  }).join(',\n');
+
+  return `You are an expert trading analyst using Smart Money Concepts (SMC) and ICT methodology.
+Analyze the ${pair} trading pair for a ${mode} strategy.
+
+REQUIREMENTS:
+- Risk:Reward ratio: minimum 1:${rr} (each TP must respect this ratio)
+- Number of Take Profit levels: exactly ${tpCount}
+- Timeframe: ${mode === 'scalping' ? '1-15 minute' : mode === 'intraday' ? '1-4 hour' : 'Daily'}
+
+Provide a trading signal in the following EXACT JSON format (no markdown, no extra text, no code blocks):
+{
+  "direction": "BUY",
+  "entry": "1.08450 - 1.08500",
+  "sl": "1.08200",
+${tpExample},
+  "rr": "1:${rr}",
+  "confidence": "82%",
+  "reasoning": "detailed 2-3 sentence analysis explaining the SMC/ICT setup, key levels, and market structure"
+}
+
+Base your analysis on:
+- Current market structure (BOS/CHoCH)
+- Order blocks and fair value gaps
+- Liquidity levels (buy/sell side)
+- Each TP level should be at a key liquidity/resistance level
+- TP${tpCount} should achieve at least 1:${rr} risk/reward ratio
+- Confidence based on confluence of signals (50-95%)
+`;
+};
+
+async function generateSignalWithAI(provider: string, model: string, apiKey: string, pair: string, mode: string, rr: number = 2, tpCount: number = 2): Promise<any> {
+  const prompt = SIGNAL_PROMPT(pair, mode, rr, tpCount);
+  let rawText = '';
+
+  try {
+    if (provider === 'gemini') {
+      const genai = new GoogleGenAI({ apiKey });
+      const response = await genai.models.generateContent({
+        model: model || 'gemini-1.5-flash',
+        contents: prompt,
+      });
+      rawText = response.text || '';
+    } else if (provider === 'anthropic') {
+      const client = new Anthropic({ apiKey });
+      const message = await client.messages.create({
+        model: model || 'claude-3-5-haiku-20241022',
+        max_tokens: 1024,
+        messages: [{ role: 'user', content: prompt }],
+      });
+      rawText = (message.content[0] as any).text || '';
+    } else if (provider === 'groq') {
+      const client = new Groq({ apiKey });
+      const completion = await client.chat.completions.create({
+        model: model || 'llama-3.3-70b-versatile',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 1024,
+      });
+      rawText = completion.choices[0]?.message?.content || '';
+    } else if (provider === 'openai') {
+      const client = new OpenAI({ apiKey });
+      const completion = await client.chat.completions.create({
+        model: model || 'gpt-4o-mini',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 1024,
+      });
+      rawText = completion.choices[0]?.message?.content || '';
+    } else if (provider === 'mistral') {
+      // Mistral uses OpenAI-compatible API
+      const client = new OpenAI({ apiKey, baseURL: 'https://api.mistral.ai/v1' });
+      const completion = await client.chat.completions.create({
+        model: model || 'mistral-small-latest',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 1024,
+      });
+      rawText = completion.choices[0]?.message?.content || '';
+    } else if (provider === 'xai') {
+      const client = new OpenAI({ apiKey, baseURL: 'https://api.x.ai/v1' });
+      const completion = await client.chat.completions.create({
+        model: model || 'grok-beta',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 1024,
+      });
+      rawText = completion.choices[0]?.message?.content || '';
+    } else if (provider === 'together') {
+      const client = new OpenAI({ apiKey, baseURL: 'https://api.together.xyz/v1' });
+      const completion = await client.chat.completions.create({
+        model: model || 'meta-llama/Llama-3-70b-chat-hf',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 1024,
+      });
+      rawText = completion.choices[0]?.message?.content || '';
+    } else if (provider === 'cohere') {
+      const client = new OpenAI({ apiKey, baseURL: 'https://api.cohere.ai/compatibility/v1' });
+      const completion = await client.chat.completions.create({
+        model: model || 'command-r-plus',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 1024,
+      });
+      rawText = completion.choices[0]?.message?.content || '';
+    } else if (provider === 'perplexity') {
+      const client = new OpenAI({ apiKey, baseURL: 'https://api.perplexity.ai' });
+      const completion = await client.chat.completions.create({
+        model: model || 'llama-3.1-sonar-small-128k-online',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 1024,
+      });
+      rawText = completion.choices[0]?.message?.content || '';
+    } else {
+      throw new Error(`Provider '${provider}' tidak didukung`);
+    }
+
+    // Parse JSON from response
+    const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error('AI tidak mengembalikan format JSON yang valid');
+    
+    const parsed = JSON.parse(jsonMatch[0]);
+    
+    // Validate required fields (tp1 is always required, others depend on tpCount)
+    const required = ['direction', 'entry', 'sl', 'tp1', 'confidence', 'reasoning'];
+    for (const field of required) {
+      if (!parsed[field]) throw new Error(`Field '${field}' tidak ada dalam respons AI`);
+    }
+    
+    // Validate TP fields based on tpCount
+    for (let i = 1; i <= tpCount; i++) {
+      if (!parsed[`tp${i}`]) {
+        // If AI didn't provide enough TPs, generate them based on tp1
+        if (i > 1 && parsed[`tp${i - 1}`]) {
+          // Estimate next TP (not ideal but fallback)
+          parsed[`tp${i}`] = parsed[`tp${i - 1}`];
+        }
+      }
+    }
+    
+    // Normalize direction
+    parsed.direction = parsed.direction.toUpperCase();
+    if (!['BUY', 'SELL'].includes(parsed.direction)) {
+      throw new Error('Direction harus BUY atau SELL');
+    }
+    
+    // Set rr if not provided by AI
+    if (!parsed.rr) {
+      parsed.rr = `1:${rr}`;
+    }
+    
+    return parsed;
+  } catch (err: any) {
+    throw new Error(`Gagal generate sinyal dari ${provider}: ${err.message}`);
+  }
+}
 
 // Initialize Tables
 async function initDB() {
-  // DB 1: users, api_keys, usage_logs, user_settings
-  await pool1.query(`
+  // Single DB: all tables
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
       username TEXT UNIQUE,
@@ -41,6 +206,9 @@ async function initDB() {
       password TEXT,
       role TEXT DEFAULT 'user',
       status TEXT DEFAULT 'unverified',
+      banned BOOLEAN DEFAULT FALSE,
+      bannedReason TEXT,
+      bannedAt TIMESTAMP,
       otp TEXT,
       bio TEXT,
       avatar TEXT,
@@ -48,11 +216,16 @@ async function initDB() {
       createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS banned BOOLEAN DEFAULT FALSE;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS bannedReason TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS bannedAt TIMESTAMP;
+
     CREATE TABLE IF NOT EXISTS api_keys (
       id SERIAL PRIMARY KEY,
       userId TEXT,
       provider TEXT,
       key TEXT,
+      model TEXT,
       status TEXT DEFAULT 'active',
       createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       UNIQUE(userId, provider)
@@ -85,6 +258,10 @@ async function initDB() {
       sl TEXT,
       tp1 TEXT,
       tp2 TEXT,
+      tp3 TEXT,
+      tp4 TEXT,
+      rr TEXT,
+      tpCount INTEGER DEFAULT 2,
       confidence TEXT,
       reasoning TEXT,
       provider TEXT,
@@ -93,6 +270,11 @@ async function initDB() {
       pnl TEXT,
       createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
+
+    ALTER TABLE signals ADD COLUMN IF NOT EXISTS tp3 TEXT;
+    ALTER TABLE signals ADD COLUMN IF NOT EXISTS tp4 TEXT;
+    ALTER TABLE signals ADD COLUMN IF NOT EXISTS rr TEXT;
+    ALTER TABLE signals ADD COLUMN IF NOT EXISTS tpCount INTEGER DEFAULT 2;
 
     CREATE TABLE IF NOT EXISTS forum_posts (
       id TEXT PRIMARY KEY,
@@ -133,8 +315,21 @@ async function initDB() {
       isRead INTEGER DEFAULT 0,
       createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS bug_reports (
+      id TEXT PRIMARY KEY,
+      userId TEXT,
+      title TEXT NOT NULL,
+      description TEXT NOT NULL,
+      category TEXT DEFAULT 'general',
+      priority TEXT DEFAULT 'medium',
+      status TEXT DEFAULT 'open',
+      adminNote TEXT,
+      createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
   `);
-  console.log("Databases initialized");
+  console.log("Database initialized");
 }
 
 async function startServer() {
@@ -150,13 +345,29 @@ async function startServer() {
   app.use(express.json());
 
   // Middleware: Auth
-  const authenticate = (req: any, res: any, next: any) => {
+  const authenticate = async (req: any, res: any, next: any) => {
     const authHeader = req.headers.authorization;
     if (!authHeader) return res.status(401).json({ message: "Token tidak valid." });
     
     const token = authHeader.split(" ")[1];
     try {
-      const decoded = jwt.verify(token, JWT_SECRET);
+      const decoded = jwt.verify(token, JWT_SECRET) as any;
+      
+      // Cek status banned dari database
+      const userResult = await pool.query(
+        "SELECT banned, bannedReason FROM users WHERE id = $1",
+        [decoded.id]
+      );
+      const user = userResult.rows[0];
+      
+      if (user?.banned) {
+        return res.status(403).json({ 
+          message: "Akun Anda telah dibanned.", 
+          reason: user.bannedReason || "Pelanggaran kebijakan",
+          banned: true 
+        });
+      }
+      
       req.user = decoded;
       next();
     } catch (err) {
@@ -310,10 +521,6 @@ async function startServer() {
     res.json({ dailySignals: 5, dailyLimit: 100 });
   });
 
-  app.get("/api/user/usage", authenticate, async (req: any, res) => {
-    res.json({ dailySignals: 5, dailyLimit: 100 });
-  });
-
   app.put("/api/user/profile", authenticate, async (req: any, res) => {
     const { bio, avatar } = req.body;
     await pool1.query("UPDATE users SET bio = $1, avatar = $2 WHERE id = $3", [bio, avatar, req.user.id]);
@@ -329,32 +536,75 @@ async function startServer() {
 
   // --- Signal Routes ---
   app.post("/api/signal/generate", authenticate, async (req: any, res) => {
-    const { pair, mode, provider, model } = req.body;
-    const id = "SIG-" + Math.random().toString(36).substring(2, 10).toUpperCase();
-    
-    const signal = {
-      id,
-      userId: req.user.id,
-      pair,
-      mode,
-      direction: Math.random() > 0.5 ? 'BUY' : 'SELL',
-      entry: "1.08450 - 1.08500",
-      sl: "1.08300",
-      tp1: "1.08700",
-      tp2: "1.08900",
-      confidence: "85%",
-      reasoning: "Market showing strong bullish divergence on H1 timeframe with RSI oversold conditions.",
-      provider,
-      model
-    };
+    const { pair, mode, provider, model, rr = 2, tpCount = 2 } = req.body;
 
-    await pool2.query(`
-      INSERT INTO signals (id, userId, pair, mode, direction, entry, sl, tp1, tp2, confidence, reasoning, provider, model)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-    `, Object.values(signal));
+    if (!pair || !mode || !provider) {
+      return res.status(400).json({ message: "pair, mode, dan provider wajib diisi" });
+    }
 
-    io.to(req.user.id).emit('signal:new', signal);
-    res.json(signal);
+    const rrNum = Math.max(1, Math.min(10, parseInt(rr) || 2));
+    const tpCountNum = Math.max(1, Math.min(4, parseInt(tpCount) || 2));
+
+    // Ambil API key user untuk provider yang dipilih
+    const keyResult = await pool1.query(
+      "SELECT key FROM api_keys WHERE userId = $1 AND provider = $2",
+      [req.user.id, provider]
+    );
+    const apiKey = keyResult.rows[0]?.key;
+
+    if (!apiKey) {
+      return res.status(400).json({ 
+        message: `API Key untuk provider '${provider}' belum dikonfigurasi. Silakan tambahkan di halaman API Keys.` 
+      });
+    }
+
+    try {
+      // Generate sinyal menggunakan AI yang sebenarnya
+      const aiResult = await generateSignalWithAI(provider, model, apiKey, pair, mode, rrNum, tpCountNum);
+      
+      const id = "SIG-" + Math.random().toString(36).substring(2, 10).toUpperCase();
+      const signal: any = {
+        id,
+        userId: req.user.id,
+        pair,
+        mode,
+        direction: aiResult.direction,
+        entry: aiResult.entry,
+        sl: aiResult.sl,
+        tp1: aiResult.tp1,
+        tp2: aiResult.tp2 || null,
+        tp3: aiResult.tp3 || null,
+        tp4: aiResult.tp4 || null,
+        rr: aiResult.rr || `1:${rrNum}`,
+        tpCount: tpCountNum,
+        confidence: aiResult.confidence,
+        reasoning: aiResult.reasoning,
+        provider,
+        model: model || ''
+      };
+
+      await pool2.query(`
+        INSERT INTO signals (id, userId, pair, mode, direction, entry, sl, tp1, tp2, tp3, tp4, rr, tpCount, confidence, reasoning, provider, model)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+      `, [
+        signal.id, signal.userId, signal.pair, signal.mode, signal.direction,
+        signal.entry, signal.sl, signal.tp1, signal.tp2, signal.tp3, signal.tp4,
+        signal.rr, signal.tpCount, signal.confidence, signal.reasoning,
+        signal.provider, signal.model
+      ]);
+
+      // Log usage
+      await pool1.query(
+        "INSERT INTO usage_logs (userId, action) VALUES ($1, $2)",
+        [req.user.id, `signal:generate:${provider}:${pair}`]
+      );
+
+      io.to(req.user.id).emit('signal:new', signal);
+      res.json(signal);
+    } catch (err: any) {
+      console.error('Signal generation error:', err.message);
+      res.status(500).json({ message: err.message || "Gagal generate sinyal" });
+    }
   });
 
   app.get("/api/signal/history", authenticate, async (req: any, res) => {
@@ -366,13 +616,62 @@ async function startServer() {
     }
   });
 
+  app.get("/api/signal/:id", authenticate, async (req: any, res) => {
+    try {
+      const result = await pool2.query("SELECT * FROM signals WHERE id = $1 AND userId = $2", [req.params.id, req.user.id]);
+      if (!result.rows[0]) return res.status(404).json({ message: "Signal not found" });
+      res.json(result.rows[0]);
+    } catch (err) {
+      res.status(500).json({ message: "Gagal mengambil sinyal" });
+    }
+  });
+
+  app.patch("/api/signal/:id/result", authenticate, async (req: any, res) => {
+    const { result, pnl } = req.body;
+    try {
+      await pool2.query("UPDATE signals SET result = $1, pnl = $2 WHERE id = $3 AND userId = $4", [result, pnl, req.params.id, req.user.id]);
+      const updated = await pool2.query("SELECT * FROM signals WHERE id = $1", [req.params.id]);
+      res.json(updated.rows[0]);
+    } catch (err) {
+      res.status(500).json({ message: "Gagal memperbarui hasil sinyal" });
+    }
+  });
+
   app.get("/api/models", authenticate, (req, res) => {
     const { provider } = req.query;
-    const models = [
+    const models: { id: string; name: string; provider: string }[] = [
+      // OpenAI
       { id: 'gpt-4o', name: 'GPT-4o', provider: 'openai' },
-      { id: 'claude-3-5-sonnet', name: 'Claude 3.5 Sonnet', provider: 'anthropic' },
+      { id: 'gpt-4o-mini', name: 'GPT-4o Mini', provider: 'openai' },
+      { id: 'gpt-4-turbo', name: 'GPT-4 Turbo', provider: 'openai' },
+      // Anthropic
+      { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet', provider: 'anthropic' },
+      { id: 'claude-3-5-haiku-20241022', name: 'Claude 3.5 Haiku', provider: 'anthropic' },
+      { id: 'claude-3-opus-20240229', name: 'Claude 3 Opus', provider: 'anthropic' },
+      // Gemini
+      { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', provider: 'gemini' },
       { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', provider: 'gemini' },
-      { id: 'llama-3-70b', name: 'Llama 3 70B', provider: 'groq' },
+      { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', provider: 'gemini' },
+      // Groq
+      { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B', provider: 'groq' },
+      { id: 'llama-3.1-8b-instant', name: 'Llama 3.1 8B Instant', provider: 'groq' },
+      { id: 'mixtral-8x7b-32768', name: 'Mixtral 8x7B', provider: 'groq' },
+      // Mistral
+      { id: 'mistral-large-latest', name: 'Mistral Large', provider: 'mistral' },
+      { id: 'mistral-small-latest', name: 'Mistral Small', provider: 'mistral' },
+      { id: 'codestral-latest', name: 'Codestral', provider: 'mistral' },
+      // xAI
+      { id: 'grok-beta', name: 'Grok Beta', provider: 'xai' },
+      { id: 'grok-2-latest', name: 'Grok 2', provider: 'xai' },
+      // Together AI
+      { id: 'meta-llama/Llama-3-70b-chat-hf', name: 'Llama 3 70B', provider: 'together' },
+      { id: 'mistralai/Mixtral-8x7B-Instruct-v0.1', name: 'Mixtral 8x7B', provider: 'together' },
+      // Cohere
+      { id: 'command-r-plus', name: 'Command R+', provider: 'cohere' },
+      { id: 'command-r', name: 'Command R', provider: 'cohere' },
+      // Perplexity
+      { id: 'llama-3.1-sonar-large-128k-online', name: 'Sonar Large (Online)', provider: 'perplexity' },
+      { id: 'llama-3.1-sonar-small-128k-online', name: 'Sonar Small (Online)', provider: 'perplexity' },
     ];
     
     if (provider) {
@@ -451,6 +750,28 @@ async function startServer() {
     }
 
     res.json(post);
+  });
+
+  app.delete("/api/forum/posts/:id", authenticate, async (req: any, res) => {
+    try {
+      const postResult = await pool2.query("SELECT * FROM forum_posts WHERE id = $1", [req.params.id]);
+      const post = postResult.rows[0];
+      if (!post) return res.status(404).json({ message: "Post not found" });
+      
+      // Allow admin or post owner to delete
+      if (post.userid !== req.user.id && req.user.role !== 'admin') {
+        return res.status(403).json({ message: "Akses ditolak" });
+      }
+      
+      await pool2.query("DELETE FROM forum_comments WHERE postId = $1", [req.params.id]);
+      await pool2.query("DELETE FROM forum_likes WHERE postId = $1", [req.params.id]);
+      await pool2.query("DELETE FROM forum_posts WHERE id = $1", [req.params.id]);
+      
+      io.emit('forum:post:delete', { postId: req.params.id });
+      res.json({ message: "Post deleted" });
+    } catch (err) {
+      res.status(500).json({ message: "Gagal menghapus post" });
+    }
   });
 
   app.post("/api/forum/posts/:id/comments", authenticate, async (req: any, res) => {
@@ -564,7 +885,7 @@ async function startServer() {
   });
 
   app.get("/api/admin/users", authenticate, isAdmin, async (req, res) => {
-    const result = await pool1.query("SELECT id, username, email, role, status, \"createdAt\" FROM users");
+    const result = await pool1.query("SELECT id, username, email, role, status, createdat FROM users");
     res.json(result.rows);
   });
 
@@ -583,14 +904,256 @@ async function startServer() {
     res.json({ count: parseInt(result.rows[0].count) });
   });
 
+  app.patch("/api/notifications/read-all", authenticate, async (req: any, res) => {
+    await pool2.query("UPDATE notifications SET isRead = 1 WHERE userId = $1", [req.user.id]);
+    res.json({ message: "All marked as read" });
+  });
+
   app.patch("/api/notifications/:id/read", authenticate, async (req: any, res) => {
     await pool2.query("UPDATE notifications SET isRead = 1 WHERE id = $1 AND userId = $2", [req.params.id, req.user.id]);
     res.json({ message: "Marked as read" });
   });
 
-  app.patch("/api/notifications/read-all", authenticate, async (req: any, res) => {
-    await pool2.query("UPDATE notifications SET isRead = 1 WHERE userId = $1", [req.user.id]);
-    res.json({ message: "All marked as read" });
+  app.delete("/api/notifications/:id", authenticate, async (req: any, res) => {
+    await pool2.query("DELETE FROM notifications WHERE id = $1 AND userId = $2", [req.params.id, req.user.id]);
+    res.json({ message: "Notification deleted" });
+  });
+
+  app.delete("/api/notifications", authenticate, async (req: any, res) => {
+    await pool2.query("DELETE FROM notifications WHERE userId = $1", [req.user.id]);
+    res.json({ message: "All notifications deleted" });
+  });
+
+  // --- Admin Extended Routes ---
+  app.get("/api/admin/users/:id", authenticate, isAdmin, async (req, res) => {
+    const result = await pool1.query("SELECT id, username, email, role, status, createdAt FROM users WHERE id = $1", [req.params.id]);
+    if (!result.rows[0]) return res.status(404).json({ message: "User not found" });
+    res.json(result.rows[0]);
+  });
+
+  app.patch("/api/admin/users/:id/role", authenticate, isAdmin, async (req: any, res) => {
+    const { role } = req.body;
+    await pool1.query("UPDATE users SET role = $1 WHERE id = $2", [role, req.params.id]);
+    res.json({ message: "Role updated" });
+  });
+
+  app.patch("/api/admin/users/:id/verify", authenticate, isAdmin, async (req: any, res) => {
+    await pool1.query("UPDATE users SET status = 'verified' WHERE id = $1", [req.params.id]);
+    res.json({ message: "User verified" });
+  });
+
+  app.delete("/api/admin/users/:id", authenticate, isAdmin, async (req: any, res) => {
+    await pool1.query("DELETE FROM users WHERE id = $1", [req.params.id]);
+    res.json({ message: "User deleted" });
+  });
+
+  app.get("/api/admin/signals", authenticate, isAdmin, async (req, res) => {
+    try {
+      const result = await pool2.query("SELECT * FROM signals ORDER BY createdAt DESC LIMIT 100");
+      res.json(result.rows || []);
+    } catch (err) {
+      res.status(500).json({ message: "Gagal mengambil sinyal" });
+    }
+  });
+
+  app.get("/api/admin/forum/posts", authenticate, isAdmin, async (req, res) => {
+    try {
+      const postsResult = await pool2.query("SELECT * FROM forum_posts ORDER BY createdAt DESC");
+      const posts = postsResult.rows;
+      if (posts.length === 0) return res.json([]);
+      const userIds = [...new Set(posts.map((p: any) => p.userid))];
+      const usersResult = await pool1.query("SELECT id, username FROM users WHERE id = ANY($1)", [userIds]);
+      const userMap = usersResult.rows.reduce((acc: any, u: any) => { acc[u.id] = u.username; return acc; }, {});
+      res.json(posts.map((p: any) => ({ ...p, author: userMap[p.userid] || 'Unknown' })));
+    } catch (err) {
+      res.status(500).json({ message: "Gagal mengambil forum posts" });
+    }
+  });
+
+  app.patch("/api/admin/forum/posts/:id", authenticate, isAdmin, async (req: any, res) => {
+    const { title, content, category } = req.body;
+    await pool2.query("UPDATE forum_posts SET title = $1, content = $2, category = $3 WHERE id = $4", [title, content, category, req.params.id]);
+    const result = await pool2.query("SELECT * FROM forum_posts WHERE id = $1", [req.params.id]);
+    res.json(result.rows[0]);
+  });
+
+  app.delete("/api/admin/forum/posts/:id", authenticate, isAdmin, async (req: any, res) => {
+    await pool2.query("DELETE FROM forum_comments WHERE postId = $1", [req.params.id]);
+    await pool2.query("DELETE FROM forum_likes WHERE postId = $1", [req.params.id]);
+    await pool2.query("DELETE FROM forum_posts WHERE id = $1", [req.params.id]);
+    io.emit('forum:post:delete', { postId: req.params.id });
+    res.json({ message: "Post deleted by admin" });
+  });
+
+  app.post("/api/admin/notify/broadcast", authenticate, isAdmin, async (req: any, res) => {
+    const { text, type } = req.body;
+    try {
+      const usersResult = await pool1.query("SELECT id FROM users WHERE status = 'verified'");
+      const users = usersResult.rows;
+      
+      for (const user of users) {
+        const notifId = Math.random().toString(36).substring(2, 15);
+        await pool2.query(
+          "INSERT INTO notifications (id, userId, type, text) VALUES ($1, $2, $3, $4)",
+          [notifId, user.id, type || 'admin', text]
+        );
+      }
+      
+      io.emit('notification:broadcast', { text, type: type || 'admin' });
+      res.json({ message: "Broadcast sent" });
+    } catch (err: any) {
+      res.status(500).json({ message: "Gagal mengirim broadcast: " + err.message });
+    }
+  });
+
+  app.post("/api/admin/notify/user/:id", authenticate, isAdmin, async (req: any, res) => {
+    const { text, type } = req.body;
+    const notifId = Math.random().toString(36).substring(2, 15);
+    await pool.query(
+      "INSERT INTO notifications (id, userId, type, text) VALUES ($1, $2, $3, $4)",
+      [notifId, req.params.id, type || 'admin', text]
+    );
+    io.to(req.params.id).emit('notification:new', { id: notifId, type: type || 'admin', text });
+    res.json({ message: "Notification sent" });
+  });
+
+  // --- Ban / Unban Routes ---
+  app.post("/api/admin/users/:id/ban", authenticate, isAdmin, async (req: any, res) => {
+    const { reason } = req.body;
+    try {
+      await pool.query(
+        "UPDATE users SET banned = TRUE, bannedReason = $1, bannedAt = NOW() WHERE id = $2",
+        [reason || 'Pelanggaran kebijakan', req.params.id]
+      );
+      // Emit realtime ke user yang dibanned
+      io.to(req.params.id).emit('user:banned', { 
+        reason: reason || 'Pelanggaran kebijakan',
+        message: 'Akun Anda telah dibanned oleh admin.'
+      });
+      res.json({ message: "User berhasil dibanned" });
+    } catch (err: any) {
+      res.status(500).json({ message: "Gagal ban user: " + err.message });
+    }
+  });
+
+  app.post("/api/admin/users/:id/unban", authenticate, isAdmin, async (req: any, res) => {
+    try {
+      await pool.query(
+        "UPDATE users SET banned = FALSE, bannedReason = NULL, bannedAt = NULL WHERE id = $1",
+        [req.params.id]
+      );
+      // Emit realtime ke user yang di-unban
+      io.to(req.params.id).emit('user:unbanned', { 
+        message: 'Akun Anda telah dipulihkan.'
+      });
+      res.json({ message: "User berhasil di-unban" });
+    } catch (err: any) {
+      res.status(500).json({ message: "Gagal unban user: " + err.message });
+    }
+  });
+
+  // --- Bug Reports Routes ---
+  app.post("/api/bug-reports", authenticate, async (req: any, res) => {
+    const { title, description, category, priority } = req.body;
+    if (!title || !description) {
+      return res.status(400).json({ message: "Judul dan deskripsi wajib diisi" });
+    }
+    const id = Math.random().toString(36).substring(2, 15);
+    try {
+      await pool.query(
+        "INSERT INTO bug_reports (id, userId, title, description, category, priority) VALUES ($1, $2, $3, $4, $5, $6)",
+        [id, req.user.id, title, description, category || 'general', priority || 'medium']
+      );
+      res.json({ message: "Bug report berhasil dikirim", id });
+    } catch (err: any) {
+      res.status(500).json({ message: "Gagal mengirim bug report: " + err.message });
+    }
+  });
+
+  app.get("/api/admin/bug-reports", authenticate, isAdmin, async (req, res) => {
+    try {
+      const result = await pool.query(`
+        SELECT br.*, u.username 
+        FROM bug_reports br 
+        LEFT JOIN users u ON br.userId = u.id 
+        ORDER BY br.createdAt DESC
+      `);
+      res.json(result.rows || []);
+    } catch (err: any) {
+      res.status(500).json({ message: "Gagal mengambil bug reports: " + err.message });
+    }
+  });
+
+  app.patch("/api/admin/bug-reports/:id", authenticate, isAdmin, async (req: any, res) => {
+    const { status, adminNote } = req.body;
+    try {
+      await pool.query(
+        "UPDATE bug_reports SET status = $1, adminNote = $2, updatedAt = NOW() WHERE id = $3",
+        [status, adminNote, req.params.id]
+      );
+      res.json({ message: "Bug report diperbarui" });
+    } catch (err: any) {
+      res.status(500).json({ message: "Gagal memperbarui bug report: " + err.message });
+    }
+  });
+
+  app.delete("/api/admin/bug-reports/:id", authenticate, isAdmin, async (req: any, res) => {
+    await pool.query("DELETE FROM bug_reports WHERE id = $1", [req.params.id]);
+    res.json({ message: "Bug report dihapus" });
+  });
+
+  // --- Database Backup Route ---
+  app.post("/api/admin/backup", authenticate, isAdmin, async (req: any, res) => {
+    const { targetUri } = req.body;
+    if (!targetUri) {
+      return res.status(400).json({ message: "Target database URI wajib diisi" });
+    }
+    
+    try {
+      const targetPool = new Pool({
+        connectionString: targetUri,
+        ssl: { rejectUnauthorized: false }
+      });
+      
+      // Test koneksi ke target DB
+      await targetPool.query('SELECT 1');
+      
+      // Ambil semua tabel
+      const tables = ['users', 'api_keys', 'usage_logs', 'signals', 'forum_posts', 'forum_comments', 'forum_likes', 'notifications', 'bug_reports'];
+      const backupStats: any = {};
+      
+      for (const table of tables) {
+        try {
+          const data = await pool.query(`SELECT * FROM ${table}`);
+          backupStats[table] = data.rows.length;
+          
+          if (data.rows.length > 0) {
+            // Buat tabel di target jika belum ada (simple approach)
+            for (const row of data.rows) {
+              const cols = Object.keys(row).join(', ');
+              const vals = Object.values(row).map((_, i) => `$${i + 1}`).join(', ');
+              const values = Object.values(row);
+              
+              try {
+                await targetPool.query(
+                  `INSERT INTO ${table} (${cols}) VALUES (${vals}) ON CONFLICT DO NOTHING`,
+                  values
+                );
+              } catch (rowErr) {
+                // Skip row errors (e.g., constraint violations)
+              }
+            }
+          }
+        } catch (tableErr) {
+          backupStats[table] = 'error';
+        }
+      }
+      
+      await targetPool.end();
+      res.json({ message: "Backup berhasil", stats: backupStats });
+    } catch (err: any) {
+      res.status(500).json({ message: "Gagal backup: " + err.message });
+    }
   });
 
   // Socket.io Connection

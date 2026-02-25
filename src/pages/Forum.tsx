@@ -107,7 +107,7 @@ export const Forum = () => {
           <h3 className="font-orbitron text-xs text-neural-neon uppercase tracking-widest border-b border-neural-red/20 pb-2">Leaderboard</h3>
           <div className="space-y-4">
             {leaderboard.map((item, i) => (
-              <LeaderboardItem key={item.username} rank={i + 1} name={item.username} points={item.points} />
+              <LeaderboardItem key={item.username} rank={i + 1} name={item.username} points={item.postsCount} />
             ))}
             {leaderboard.length === 0 && <p className="text-[10px] text-neural-text/40">Loading...</p>}
           </div>
@@ -133,10 +133,10 @@ export const Forum = () => {
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 bg-neural-red/10 border border-neural-red/20 flex items-center justify-center text-neural-neon font-bold">
-                      {post.user?.[0] || 'U'}
+                      {post.author?.[0] || 'U'}
                     </div>
                     <div>
-                      <p className="text-sm font-bold text-white">{post.user}</p>
+                      <p className="text-sm font-bold text-white">{post.author}</p>
                       <p className="text-[10px] font-mono text-neural-text/40">{post.createdAt}</p>
                     </div>
                   </div>

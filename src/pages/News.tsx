@@ -7,14 +7,16 @@ export const News = () => {
   const [activeCategory, setActiveCategory] = useState('Semua');
   const [news, setNews] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const token = localStorage.getItem('neural_token');
 
   useEffect(() => {
-    if (!token) return;
     const fetchNews = async () => {
       try {
-        const data: any = await api.forum.getNews(token);
-        setNews(Array.isArray(data) ? data : []);
+        const data: any = await api.public.getMarketBroadcast();
+        // Combine mainNews and smallNews into a single array
+        const allNews = [];
+        if (data?.mainNews) allNews.push({ ...data.mainNews, content: data.mainNews.description });
+        if (Array.isArray(data?.smallNews)) allNews.push(...data.smallNews);
+        setNews(allNews);
       } catch (error) {
         console.error('Failed to fetch news', error);
       } finally {
@@ -22,7 +24,7 @@ export const News = () => {
       }
     };
     fetchNews();
-  }, [token]);
+  }, []);
 
   const categories = ['Semua', 'Forex', 'Crypto', 'Gold', 'Stocks'];
   const filteredNews = activeCategory === 'Semua' 

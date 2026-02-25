@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import { SOCKET_URL } from './constants';
 import { LandingPage } from './pages/LandingPage';
@@ -15,6 +15,7 @@ import { Notifications } from './pages/Notifications';
 import { Settings } from './pages/Settings';
 import { AdminPanel } from './pages/AdminPanel';
 import { AdminBootstrap } from './pages/AdminBootstrap';
+import { BlockedPage } from './pages/BlockedPage';
 import { LoadingScreen } from './components/LoadingScreen';
 import { Navbar } from './components/Navbar';
 import { useTheme } from './hooks/useTheme';
@@ -28,6 +29,7 @@ import { Providers } from './pages/Providers';
 const SocketHandler = () => {
   const { socket } = useSocket();
   const { addToast } = useNotifications();
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (!socket) return;
@@ -44,12 +46,29 @@ const SocketHandler = () => {
       addToast('signal', `Sinyal baru: ${data.pair} (${data.direction})`);
     });
 
+    // Handle ban event - redirect ke halaman blocked
+    socket.on('user:banned', (data) => {
+      localStorage.setItem('neural_ban_reason', data.reason || 'Pelanggaran kebijakan');
+      addToast('admin', `⚠ Akun Anda telah dibanned: ${data.reason}`);
+      setTimeout(() => {
+        navigate('/blocked');
+      }, 2000);
+    });
+
+    // Handle unban event
+    socket.on('user:unbanned', (data) => {
+      localStorage.removeItem('neural_ban_reason');
+      addToast('system', '✅ Akun Anda telah dipulihkan!');
+    });
+
     return () => {
       socket.off('notification:new');
       socket.off('notification:broadcast');
       socket.off('signal:new');
+      socket.off('user:banned');
+      socket.off('user:unbanned');
     };
-  }, [socket, addToast]);
+  }, [socket, addToast, navigate]);
 
   return null;
 };
@@ -87,6 +106,7 @@ export default function App() {
             <Route path="/login" element={<><Navbar /><LoginPage /></>} />
             <Route path="/register" element={<><Navbar /><RegisterPage /></>} />
             <Route path="/admin/bootstrap" element={<AdminBootstrap />} />
+            <Route path="/blocked" element={<BlockedPage />} />
 
             {/* Dashboard Routes */}
           <Route path="/dashboard" element={
